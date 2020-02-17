@@ -27,7 +27,7 @@ impl Default for Executor {
 }
 
 /// Task is our unit of execution and holds a future are waiting on
-struct Task {
+pub struct Task {
     pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
 }
 
@@ -43,13 +43,13 @@ impl GlobalExecutor for Executor {
     // Add a task on the global executor
     fn spawn(&mut self, future: Box<dyn Future<Output = ()> + 'static + Send + Unpin>) {
         self.add_task(future);
-        self.poll_tasks();
+        //self.poll_tasks();
     }
 }
 
 impl Executor {
     /// Add task for a future to the list of tasks
-    fn add_task(&mut self, future: Box<dyn Future<Output = ()> + 'static + Send + Unpin>) {
+    pub fn add_task(&mut self, future: Box<dyn Future<Output = ()> + 'static + Send + Unpin>) {
         // store our task
         let task = Arc::new(Task {
             future: Mutex::new(Box::pin(future)),
@@ -78,6 +78,14 @@ impl Executor {
             }
         }
     }
+
+    pub fn push_task(&mut self, task: Arc<Task>) {
+        self.tasks.push_back(task);
+    }
+
+    pub fn pop_tasks(&mut self) -> Option<Arc<Task>> {
+        self.tasks.remove(0)
+    }
 }
 
 struct DefaultExecutor;
@@ -98,11 +106,39 @@ lazy_static! {
         let m = DefaultExecutor;
         Mutex::new(Box::new(m))
     };
+    static ref MY_EXECUTOR: Mutex<Box<Executor>> = {
+        let m = Executor::default();
+        Mutex::new(Box::new(m))
+    };
 }
 
 /// Give future to global executor to be polled and executed.
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    GLOBAL_EXECUTOR.lock().spawn(Box::new(Box::pin(future)));
+    //GLOBAL_EXECUTOR.lock().spawn(Box::new(Box::pin(future)));
+    MY_EXECUTOR.lock().add_task(Box::new(Box::pin(future)));
+}
+
+pub fn run() -> ! {
+    loop {
+        let _task = MY_EXECUTOR.lock().pop_tasks();
+        if _task.is_some() {
+            let task = _task.unwrap();
+            let mut is_pending = false;
+            {
+                let mut future = task.future.lock();
+                // make a waker for our task
+                let waker = waker_ref(&task);
+                // poll our future and give it a waker
+                let context = &mut Context::from_waker(&*waker);
+                if let Poll::Pending = future.as_mut().poll(context) {
+                    is_pending = true;
+                }
+            }
+            if is_pending {
+                MY_EXECUTOR.lock().push_task(task);
+            }
+        }
+    }
 }
 
 // Replace the default global executor with another
