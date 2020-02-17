@@ -29,13 +29,30 @@ impl Default for Executor {
 /// Task is our unit of execution and holds a future are waiting on
 pub struct Task {
     pub future: Mutex<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>,
+    state: Mutex<bool>,
 }
 
 /// Implement what we would like to do when a task gets woken up
 impl Woke for Task {
-    fn wake_by_ref(_: &Arc<Self>) {
-        // poll everything because future is done and may have created conditions for something to finish
-        //DEFAULT_EXECUTOR.lock().poll_tasks()
+    fn wake_by_ref(task: &Arc<Self>) {
+        task.mark_ready();
+    }
+}
+
+impl Task {
+    fn mark_ready(&self) {
+        let mut value = self.state.lock();
+        *value = true;
+    }
+
+    pub fn sleeping(&self) -> bool {
+        let value = self.state.lock();
+        !(*value)
+    }
+
+    pub fn mark_sleep(&self) {
+        let mut value = self.state.lock();
+        *value = false;
     }
 }
 
@@ -45,6 +62,7 @@ impl Executor {
         // store our task
         let task = Arc::new(Task {
             future: Mutex::new(Box::pin(future)),
+            state: Mutex::new(true),
         });
         self.tasks.push_back(task);
     }
@@ -75,19 +93,24 @@ pub fn run() -> ! {
         let _task = GLOBAL_EXECUTOR.lock().pop_tasks();
         if _task.is_some() {
             let task = _task.unwrap();
-            let mut is_pending = false;
-            {
-                let mut future = task.future.lock();
-                // make a waker for our task
-                let waker = waker_ref(&task);
-                // poll our future and give it a waker
-                let context = &mut Context::from_waker(&*waker);
-                if let Poll::Pending = future.as_mut().poll(context) {
-                    is_pending = true;
-                }
-            }
-            if is_pending {
+            if task.sleeping() {
                 GLOBAL_EXECUTOR.lock().push_task(task);
+            } else {
+                let mut is_pending = false;
+                {
+                    let mut future = task.future.lock();
+                    // make a waker for our task
+                    let waker = waker_ref(&task);
+                    // poll our future and give it a waker
+                    let context = &mut Context::from_waker(&*waker);
+                    if let Poll::Pending = future.as_mut().poll(context) {
+                        is_pending = true;
+                    }
+                }
+                if is_pending {
+                    task.mark_sleep();
+                    GLOBAL_EXECUTOR.lock().push_task(task);
+                }
             }
         }
     }
