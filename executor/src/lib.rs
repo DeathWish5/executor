@@ -96,6 +96,7 @@ pub fn run() -> ! {
             if task.sleeping() {
                 GLOBAL_EXECUTOR.lock().push_task(task);
             } else {
+                task.mark_sleep();
                 let mut is_pending = false;
                 {
                     let mut future = task.future.lock();
@@ -108,7 +109,6 @@ pub fn run() -> ! {
                     }
                 }
                 if is_pending {
-                    task.mark_sleep();
                     GLOBAL_EXECUTOR.lock().push_task(task);
                 }
             }
