@@ -19,3 +19,6 @@ executor-macros = { version="0.0.1", path = "../executor-macros" }
 [dependencies.lazy_static]
 version = "1.4.0"
 features = ["spin_no_std"]
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+x86_64 = "0.9"

@@ -72,7 +72,18 @@ impl Executor {
     }
 
     pub fn pop_tasks(&mut self) -> Option<Arc<Task>> {
-        self.tasks.remove(0)
+        let length = self.tasks.len();
+        let mut res = None;
+        for _ in 0..length {
+            let task = self.tasks.pop_front().unwrap();
+            if !task.sleeping() {
+                res = Some(task);
+                break;
+            } else {
+                self.tasks.push_back(task);
+            }
+        }
+        res
     }
 }
 
@@ -112,6 +123,9 @@ pub fn run() -> ! {
                     GLOBAL_EXECUTOR.lock().push_task(task);
                 }
             }
+        } else {
+            x86_64::instructions::interrupts::enable_interrupts_and_hlt();
+            x86_64::instructions::interrupts::disable();
         }
     }
 }
