@@ -129,6 +129,8 @@ pub fn run() -> ! {
     }
 }
 
+/// Note: for below functions, is enabling interrupt needed?
+/// Need some analysis for each arch
 #[cfg(target_arch = "x86_64")]
 fn wait_for_interrupt() {
     x86_64::instructions::interrupts::enable_interrupts_and_hlt();
