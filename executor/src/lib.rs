@@ -138,6 +138,12 @@ fn wait_for_interrupt() {
 #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
 fn wait_for_interrupt() {
     unsafe {
+        // enable interrupt and disable
+        let sie = riscv::sstatus::read().sie();
+        riscv::sstatus::set_sie();
         riscv::asm::wfi();
+        if !sie {
+            riscv::sstatus::clear_sie();
+        }
     }
 }
