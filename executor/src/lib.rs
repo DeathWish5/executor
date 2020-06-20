@@ -139,11 +139,11 @@ fn wait_for_interrupt() {
 fn wait_for_interrupt() {
     unsafe {
         // enable interrupt and disable
-        let sie = riscv::sstatus::read().sie();
-        riscv::sstatus::set_sie();
+        let sie = riscv::register::sstatus::read().sie();
+        riscv::register::sstatus::set_sie();
         riscv::asm::wfi();
         if !sie {
-            riscv::sstatus::clear_sie();
+            riscv::register::sstatus::clear_sie();
         }
     }
 }
