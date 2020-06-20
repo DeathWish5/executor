@@ -124,8 +124,20 @@ pub fn run() -> ! {
                 }
             }
         } else {
-            x86_64::instructions::interrupts::enable_interrupts_and_hlt();
-            x86_64::instructions::interrupts::disable();
+            wait_for_interrupt();
         }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+fn wait_for_interrupt() {
+    x86_64::instructions::interrupts::enable_interrupts_and_hlt();
+    x86_64::instructions::interrupts::disable();
+}
+
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+fn wait_for_interrupt() {
+    unsafe {
+        riscv::asm::wfi();
     }
 }
