@@ -152,5 +152,5 @@ fn wait_for_interrupt() {
 
 #[cfg(target_arch = "aarch64")]
 fn wait_for_interrupt() {
-    llvm_asm!("wfe" :::: "volatile");
+    aarch64::asm::wfe();
 }
