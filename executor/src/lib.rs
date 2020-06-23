@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(llvm_asm)]
 extern crate alloc;
 pub use executor_macros::*;
 use lazy_static::*;
@@ -152,5 +153,11 @@ fn wait_for_interrupt() {
 
 #[cfg(target_arch = "aarch64")]
 fn wait_for_interrupt() {
+    use aarch64::regs::*;
+    let daif = DAIF.get();
+    unsafe {
+        llvm_asm!("msr daifclr, #2");
+    }
     aarch64::asm::wfe();
+    DAIF.set(daif);
 }
