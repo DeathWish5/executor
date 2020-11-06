@@ -16,7 +16,7 @@ use {
 /// Executor holds a list of tasks to be processed
 #[derive(Default)]
 pub struct Executor {
-    tasks: VecDeque<Arc<Task>>,
+    tasks: Mutex<VecDeque<Arc<Task>>>,
 }
 
 /// Task is our unit of execution and holds a future are waiting on
@@ -51,38 +51,39 @@ impl Task {
 
 impl Executor {
     /// Add task for a future to the list of tasks
-    fn add_task(&mut self, future: Pin<Box<dyn Future<Output = ()> + 'static + Send>>) {
+    fn add_task(&self, future: Pin<Box<dyn Future<Output = ()> + 'static + Send>>) {
         // store our task
         let task = Arc::new(Task {
             future: Mutex::new(future),
             state: Mutex::new(true),
         });
-        self.tasks.push_back(task);
+        self.tasks.lock().push_back(task);
     }
 
-    pub fn push_task(&mut self, task: Arc<Task>) {
-        self.tasks.push_back(task);
+    pub fn push_task(&self, task: Arc<Task>) {
+        self.tasks.lock().push_back(task);
     }
 
-    pub fn pop_runnable_task(&mut self) -> Option<Arc<Task>> {
-        for _ in 0..self.tasks.len() {
-            let task = self.tasks.pop_front().unwrap();
+    pub fn pop_runnable_task(&self) -> Option<Arc<Task>> {
+        let mut tasks = self.tasks.lock();
+        for _ in 0..tasks.len() {
+            let task = tasks.pop_front().unwrap();
             if !task.is_sleeping() {
                 return Some(task);
             }
-            self.tasks.push_back(task);
+            tasks.push_back(task);
         }
         None
     }
 
     // Give future to be polled and executed
-    pub fn spawn(&mut self, future: impl Future<Output = ()> + 'static + Send) {
+    pub fn spawn(&self, future: impl Future<Output = ()> + 'static + Send) {
         self.add_task(Box::pin(future));
     }
 
     /// Run futures until there is no runnable task.
-    pub fn run_until_idle(executor: &Mutex<Self>) {
-        while let Some(task) = { || executor.lock().pop_runnable_task() }() {
+    pub fn run_until_idle(&self) {
+        while let Some(task) = self.pop_runnable_task() {
             task.mark_sleep();
             // make a waker for our task
             let waker = waker_ref(&task);
@@ -90,22 +91,22 @@ impl Executor {
             let mut context = Context::from_waker(&*waker);
             let ret = task.future.lock().as_mut().poll(&mut context);
             if let Poll::Pending = ret {
-                executor.lock().push_task(task);
+                self.push_task(task);
             }
         }
     }
 }
 
 lazy_static! {
-    static ref GLOBAL_EXECUTOR: Mutex<Executor> = Mutex::new(Executor::default());
+    static ref GLOBAL_EXECUTOR: Executor = Executor::default();
 }
 
 /// Give future to global executor to be polled and executed.
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    GLOBAL_EXECUTOR.lock().spawn(future);
+    GLOBAL_EXECUTOR.spawn(future);
 }
 
 /// Run futures in global executor until there is no runnable task.
 pub fn run_until_idle() {
-    Executor::run_until_idle(&GLOBAL_EXECUTOR)
+    GLOBAL_EXECUTOR.run_until_idle();
 }
