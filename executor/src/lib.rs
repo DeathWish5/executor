@@ -74,6 +74,26 @@ impl Executor {
         }
         None
     }
+
+    // Give future to be polled and executed
+    pub fn spawn(&mut self, future: impl Future<Output = ()> + 'static + Send) {
+        self.add_task(Box::pin(future));
+    }
+
+    /// Run futures until there is no runnable task.
+    pub fn run_until_idle(executor: &Mutex<Self>) {
+        while let Some(task) = { || executor.lock().pop_runnable_task() }() {
+            task.mark_sleep();
+            // make a waker for our task
+            let waker = waker_ref(&task);
+            // poll our future and give it a waker
+            let mut context = Context::from_waker(&*waker);
+            let ret = task.future.lock().as_mut().poll(&mut context);
+            if let Poll::Pending = ret {
+                executor.lock().push_task(task);
+            }
+        }
+    }
 }
 
 lazy_static! {
@@ -82,20 +102,10 @@ lazy_static! {
 
 /// Give future to global executor to be polled and executed.
 pub fn spawn(future: impl Future<Output = ()> + 'static + Send) {
-    GLOBAL_EXECUTOR.lock().add_task(Box::pin(future));
+    GLOBAL_EXECUTOR.lock().spawn(future);
 }
 
-/// Run futures until there is no runnable task.
+/// Run futures in global executor until there is no runnable task.
 pub fn run_until_idle() {
-    while let Some(task) = { || GLOBAL_EXECUTOR.lock().pop_runnable_task() }() {
-        task.mark_sleep();
-        // make a waker for our task
-        let waker = waker_ref(&task);
-        // poll our future and give it a waker
-        let mut context = Context::from_waker(&*waker);
-        let ret = task.future.lock().as_mut().poll(&mut context);
-        if let Poll::Pending = ret {
-            GLOBAL_EXECUTOR.lock().push_task(task);
-        }
-    }
+    Executor::run_until_idle(&GLOBAL_EXECUTOR)
 }
