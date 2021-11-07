@@ -13,10 +13,9 @@ use {
     woke::{waker_ref, Woke},
 };
 
-#[macro_use]
 extern crate log;
 
-use log::*;
+// use log::*;
 
 /// Executor holds a list of tasks to be processed
 #[derive(Default)]
@@ -87,10 +86,7 @@ impl Executor {
     }
 
     /// Spawns a task and blocks the current thread on its result
-    pub fn block_on<T, F>(future: impl Future<Output = T> + 'static + Send, mut wait: F) -> T
-    where
-        F: FnMut(),
-    {
+    pub fn block_on<T, F: FnMut()>(future: impl Future<Output = T> + Send, mut wait: F) -> T {
         struct NullWaker;
         impl Woke for NullWaker {
             fn wake_by_ref(_: &Arc<Self>) {
@@ -102,7 +98,7 @@ impl Executor {
         let mut context = Context::from_waker(&*waker);
         let mut future = Box::pin(future);
         loop {
-            warn!("Block run a future.");
+            // warn!("Block run a future.");
             if let Poll::Ready(n) = future.as_mut().poll(&mut context) {
                 return n;
             }
